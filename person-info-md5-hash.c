@@ -77,21 +77,17 @@ void input(void *argp)
 }
 #endif
 
-void threadWorker( void *vPointer) 
+void *threadWorker( void * vPointer) 
 {
     struct PersonNr* firstPersonPointer = (struct PersonNr*)vPointer;
 
     printf(" [INFO] First person pointer %s\n", firstPersonPointer->dob);
     
-    int count = 0;
     for (; firstPersonPointer != 0; firstPersonPointer += NR_THREADS)
     {
         printf(" [INFO] Next person pointer %s\n", firstPersonPointer->dob);
-        count += 1;
-
-        if (count > 2)
-            exit(0);
     }
+    return NULL;
 }
 
 int main(void)
@@ -107,7 +103,6 @@ int main(void)
         char year_day_month[MAX_BUFF];
         strftime(year_day_month, MAX_BUFF, "%Y%m%d", localtime(&epoch));
 
-        //personDobArray[i] = malloc(sizeof(struct PersonNr));
         personDobArray[i].dob = malloc(sizeof(MAX_BUFF));
         personDobArray[i].dob = strcpy(personDobArray[i].dob, year_day_month);
         personDobArray[i].start = 1;
@@ -118,15 +113,15 @@ int main(void)
 
     printf(" [INFO] Done generating data\n");
 
-    //pthread_create(&threadId, NULL, input, (void *)threadData);
-    threadWorker(&personDobArray[0]);
-
     for(int i = 0; i < NR_THREADS; i++)
     {
         struct PersonNr personDob = personDobArray[i];
 
         void *p = &personDob;
+        printf(" [INFO] Creating thread %d\n", i);
         pthread_create(&threadId, NULL, threadWorker, p);
     }
+
+    pthread_join(threadId, NULL);
     return 0;
 }
