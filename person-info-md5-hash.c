@@ -15,88 +15,133 @@
 #define START_TS -473385600
 #define MAX_BUFF 11
 #define YEARS 1
-#define NR_THREADS 1
+#define NR_THREADS 8
 #define DAYS_IN_SEC (60 * 60 * 24)
 #define TOTAL_DAYS (365 * YEARS)
 
-#define SEARCH_FOR_HASH_DOB "4b811a6d870c7b3d5a751cead85a5a73"
+#define SEARCH_FOR_HASH_DOB "a6d063641f3ba94c30d2073ee46b7e14"
+
+unsigned int hash;
 
 struct PersonNr
 {
     int start;
     int stop;
     char *dob;
+    struct PersonNr *previous;
 };
 
 static pthread_t threadId;
+struct PersonNr *personDobArray;
 
-void *getHMAC(void *argp)
+unsigned int *hexInt;
+
+void *getHMAC(void *argp, MD5_CTX *ctx)
 {
     pthread_setname_np("GET_PERSONNR_HASH");
     struct PersonNr *d = (struct PersonNr *)argp;
     unsigned char digest[16];
     char *dob = d->dob;
 
-    MD5_CTX ctx;
-    MD5_Init(&ctx);
-
+    //long hexInt = getIntFromHexStr();
     for (int i = d->start; i <= d->stop; i++)
     {
         char str[16];
         sprintf(str, "%s%04d", dob, i);
 
-        MD5_Update(&ctx, &str, strlen(str));
-        
-        char mdString[33];
-        for (int z = 0; z < 16; z++)
+        MD5_Update(ctx, &str, strlen(str));
+
+        if (memcmp(hexInt, digest, sizeof(unsigned int)) == 0)
         {
-            sprintf(&mdString[z * 2], "%02x", (unsigned int)digest[z]);
+
+            for (int z = 0; z < 16; z++)
+            {
+                printf("%u\n", (unsigned int)digest[z]);
+            }
+
+            char mdString[33];
+            for (int z = 0; z < 16; z++)
+            {
+                sprintf(&mdString[z * 2], "%02x", (unsigned int)digest[z]);
+            }
+            printf(" [DONE]\t%s\t%s\t\t%s\n", dob, str, mdString);
+
+            //printf("%u\n%u\n", (unsigned int)digest, (unsigned int)SEARCH_FOR_HASH_DOB);
+            //pthread_kill(threadId, 0);
+            exit(0);
         }
 
-        if ( strcmp(mdString, SEARCH_FOR_HASH_DOB) == 0 )
-        {
-            printf(" [DONE]\t%s\t\t%s\n", str, mdString);
-            pthread_kill(threadId, 0);
-        }
-    }
-    MD5_Final(digest, &ctx);
-    free(d->dob);
-    free(d);
-    return NULL;
-}
+            //printf("%x\n", digest);
 #if 0
-void input(void *argp) 
-{
-    struct PersonNr* persons[] = (struct PersonNr*)argp;
-    for (int i = 0; i < sizeof(&persons); i++)
-    {
-        struct PersonNr *p_struct = persons[i];
+        if ((unsigned int)digest == (unsigned int)SEARCH_FOR_HASH_DOB)
+        {
+            char mdString[33];
+            for (int z = 0; z < 16; z++)
+            {
+                sprintf(&mdString[z * 2], "%02x", (unsigned int)digest[z]);
+            }
 
-        getHMAC(p_struct);
-    }
-}
+            if (strcmp(mdString, SEARCH_FOR_HASH_DOB) == 0)
+            {
+                printf(" [DONE]\t%s\t%s\t\t%s\n", dob, str, mdString);
+                pthread_kill(threadId, 0);
+            }
+
+            printf("%u\n%u\n", (unsigned int)digest, (unsigned int)SEARCH_FOR_HASH_DOB);
+        }
 #endif
+    }
+    //free(d->dob);
+    //free(d);
+    return NULL;
+}
 
-void *threadWorker( void * vPointer) 
+void *threadWorker(void *vPointer)
 {
-    struct PersonNr* firstPersonPointer = (struct PersonNr*)vPointer;
+    //struct PersonNr* firstPersonPointer = (struct PersonNr*)vPointer;
+    int idx = (int)vPointer;
+    struct PersonNr firstPersonPointer; // = personDobArray[0];
 
-    printf(" [INFO] First person pointer %s\n", firstPersonPointer->dob);
-    
-    for (; firstPersonPointer != 0; firstPersonPointer += NR_THREADS)
+    //printf(" [INFO] First person pointer %s\n", firstPersonPointer.dob);
+    MD5_CTX ctx;
+    MD5_Init(&ctx);
+
+    for (int i = idx; i < TOTAL_DAYS; i += NR_THREADS)
     {
-        printf(" [INFO] Next person pointer %s\n", firstPersonPointer->dob);
+        firstPersonPointer = personDobArray[i];
+        //printf(" [INFO] Next person pointer %s (idx %d)\n", firstPersonPointer.dob, i);
+        //exit(0);
+
+        getHMAC(&firstPersonPointer, &ctx);
     }
     return NULL;
+}
+
+unsigned int *getIntFromHexStr()
+{
+    char *hexstring = SEARCH_FOR_HASH_DOB;
+    int i;
+    unsigned int *bytearray = malloc(sizeof(unsigned int) * 16);
+    uint8_t str_len = strlen(hexstring);
+
+    for (i = 0; i < (str_len / 2); i++)
+    {
+        sscanf(hexstring + 2 * i, "%02x", &bytearray[i]);
+        printf("bytearray %d: %02x int %u\n", i, bytearray[i], (unsigned int)bytearray[i]);
+    }
+    return bytearray;
 }
 
 int main(void)
 {
+    sscanf(SEARCH_FOR_HASH_DOB, "%x", &hash);
     time_t epoch = START_TS;
-    
+
+    hexInt = getIntFromHexStr();
+
     printf(" [INFO] %s", ctime(&epoch));
 
-    struct PersonNr *personDobArray = malloc(sizeof(struct PersonNr) * TOTAL_DAYS);
+    personDobArray = malloc(sizeof(struct PersonNr) * TOTAL_DAYS);
 
     for (int i = 0; i < TOTAL_DAYS; i++)
     {
@@ -113,13 +158,16 @@ int main(void)
 
     printf(" [INFO] Done generating data\n");
 
-    for(int i = 0; i < NR_THREADS; i++)
-    {
-        struct PersonNr personDob = personDobArray[i];
+    int *idx = malloc(sizeof(int) * NR_THREADS);
 
-        void *p = &personDob;
-        printf(" [INFO] Creating thread %d\n", i);
-        pthread_create(&threadId, NULL, threadWorker, p);
+    for (int i = 0; i < NR_THREADS; i++)
+    {
+        /*struct PersonNr personDob = personDobArray[i];
+        void *p = &personDob;*/
+
+        idx[i] = i;
+        printf(" [INFO] Creating thread %d (%x)\n", idx[i], idx[i]);
+        pthread_create(&threadId, NULL, threadWorker, (void *)(uintptr_t)idx[i]);
     }
 
     pthread_join(threadId, NULL);
