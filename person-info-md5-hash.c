@@ -14,12 +14,10 @@
 
 #define START_TS -473385600
 #define MAX_BUFF 11
-#define YEARS 1
-#define NR_THREADS 1
+#define YEARS 40
+#define NR_THREADS 8
 #define DAYS_IN_SEC (60 * 60 * 24)
 #define TOTAL_DAYS (365 * YEARS)
-
-static const char *hexstring = "9743152e72ad2e07f430778f9ef6fe22";
 
 unsigned int hash;
 
@@ -34,7 +32,17 @@ struct PersonNr
 static pthread_t threadId;
 struct PersonNr *personDobArray;
 
-unsigned char *hexInt;
+char *hexByteArray = NULL;
+
+void printDobInHex(char *dob, unsigned char *digest)
+{
+    char mdString[33];
+    for (int z = 0; z < 16; z++)
+    {
+        sprintf(&mdString[z * 2], "%02x", (unsigned int)digest[z]);
+    }
+    printf(" [DONE]\t%s\t%s\n", dob, mdString);
+}
 
 void *getHMAC(void *argp)
 {
@@ -46,47 +54,21 @@ void *getHMAC(void *argp)
     for (int i = d->start; i <= d->stop; i++)
     {
         char str[13];
+        str[12] = 0;
         sprintf(str, "%s%04d", dob, i);
-
-        printf("---> %s\n", str);
 
         MD5_CTX ctx;
         MD5_Init(&ctx);
 
         MD5_Update(&ctx, &str, strlen(str));
         MD5_Final(digest, &ctx);
-#if 1
-        for (int z = 0; z < 16; z++)
+
+        if (memcmp(hexByteArray, digest, 16) == 0)
         {
-            printf("DIG BYTE #\t %d | %02x %02x | %u %u|\n", z, digest[z], hexInt[z], (unsigned int)digest[z], (unsigned int)hexInt[z]);
-        }
-#endif
-        char mdString[33];
-        for (int z = 0; z < 16; z++)
-        {
-            sprintf(&mdString[z * 2], "%02x", (unsigned int)digest[z]);
-        }
-        //printf(" [DONE]\t%s\t%s\t\t%s\n", dob, str, mdString);
-
-        if (memcmp(hexInt, digest, 2) == 0)
-        {
-            printf(" [DONE] Found match");
-
-            for (int z = 0; z < 16; z++)
-            {
-                printf("%u\n", (unsigned int)digest[z]);
-            }
-
-            char mdString[33];
-            for (int z = 0; z < 16; z++)
-            {
-                sprintf(&mdString[z * 2], "%02x", (unsigned int)digest[z]);
-            }
-            printf(" [DONE]\t%s\t%s\t\t%s\n", dob, str, mdString);
-
+            printf(" [DONE] Found match\n");
+            printDobInHex(str, digest);
             exit(0);
         }
-        i = d->stop + 1;
     }
     return NULL;
 }
@@ -94,29 +76,31 @@ void *getHMAC(void *argp)
 void *threadWorker(void *vPointer)
 {
     int idx = (int)vPointer;
-    struct PersonNr firstPersonPointer; // = personDobArray[0];
+    struct PersonNr firstPersonPointer;
 
     for (int i = idx; i < TOTAL_DAYS; i += NR_THREADS)
     {
         getHMAC(&personDobArray[i]);
-        i = TOTAL_DAYS;
     }
     return NULL;
 }
-
-unsigned char *getIntFromHexStr()
+char *getByteArrayFromHex()
 {
+    char *hexstring = "1fe23491dc6dbdc28bb1ee5707ce531c";
+    char *bytearray = malloc(sizeof(char) * 17);
+    bytearray[17] = 0;
 
-    int i;
-    unsigned char *bytearray = malloc(sizeof(char) * 16);
-    uint8_t str_len = strlen(hexstring);
-
-    for (i = 0; i < (str_len / 2); i++)
+    for (int i = 0; i < 16; i++)
     {
-        sscanf(hexstring + 2 * i, "%2s", &bytearray[i]);
-
-        printf("--- BYTE #\t %d: %02x int %u\n", str_len, bytearray[i], (unsigned int)bytearray[i]);
+        char str[3];
+        int idx = i * 2;
+        str[0] = hexstring[idx];
+        str[1] = hexstring[idx + 1];
+        str[2] = 0;
+        printf("%s", str);
+        bytearray[i] = (int)strtol(str, NULL, 16);
     }
+
     return bytearray;
 }
 
@@ -124,9 +108,9 @@ int main(void)
 {
     time_t epoch = START_TS;
 
-    hexInt = getIntFromHexStr();
+    hexByteArray = getByteArrayFromHex();
 
-    printf(" [INFO] %s", ctime(&epoch));
+    printf(" [INFO] %s\n", ctime(&epoch));
 
     personDobArray = malloc(sizeof(struct PersonNr) * TOTAL_DAYS);
 
@@ -151,10 +135,10 @@ int main(void)
     {
         idx[i] = i;
         printf(" [INFO] Creating thread %d (%x)\n", idx[i], idx[i]);
-        //pthread_create(&threadId, NULL, threadWorker, (void *)(uintptr_t)idx[i]);
-        threadWorker((void *)(uintptr_t)idx[i]);
+        pthread_create(&threadId, NULL, threadWorker, (void *)(uintptr_t)idx[i]);
+        //threadWorker((void *)(uintptr_t)idx[i]);
     }
 
-    //pthread_join(threadId, NULL);
+    pthread_join(threadId, NULL);
     return 0;
 }
