@@ -19,6 +19,8 @@
 #define DAYS_IN_SEC (60 * 60 * 24)
 #define TOTAL_DAYS (365 * YEARS)
 
+#define SEARCH_MD5 "62244006d8b953f146ae74d430b7dd7c"
+
 unsigned int hash;
 
 struct PersonNr
@@ -31,7 +33,7 @@ struct PersonNr
 
 static pthread_t threadId;
 struct PersonNr *personDobArray;
-
+static unsigned long countHashGenerated = 0;
 char *hexByteArray = NULL;
 
 void printDobInHex(char *dob, unsigned char *digest)
@@ -44,11 +46,10 @@ void printDobInHex(char *dob, unsigned char *digest)
     printf(" [DONE]\t%s\t%s\n", dob, mdString);
 }
 
-void *getHMAC(void *argp)
+void *generateHashForDob(void *argp)
 {
-    pthread_setname_np("GET_PERSONNR_HASH");
     struct PersonNr *d = (struct PersonNr *)argp;
-    unsigned char *digest = malloc(sizeof(unsigned char) * 16);
+    unsigned char *digest = malloc(sizeof(char) * 16);
     char *dob = d->dob;
 
     for (int i = d->start; i <= d->stop; i++)
@@ -62,10 +63,10 @@ void *getHMAC(void *argp)
 
         MD5_Update(&ctx, &str, strlen(str));
         MD5_Final(digest, &ctx);
-
+        countHashGenerated++;
         if (memcmp(hexByteArray, digest, 16) == 0)
         {
-            printf(" [DONE] Found match\n");
+            printf(" [INFO] Found match (%lu hashes generated)\n", countHashGenerated);
             printDobInHex(str, digest);
             exit(0);
         }
@@ -75,18 +76,16 @@ void *getHMAC(void *argp)
 
 void *threadWorker(void *vPointer)
 {
-    int idx = (int)vPointer;
-    struct PersonNr firstPersonPointer;
-
-    for (int i = idx; i < TOTAL_DAYS; i += NR_THREADS)
+    pthread_setname_np("GET_PERSONNR_HASH");
+    for (int i = ((int)vPointer); i < TOTAL_DAYS; i += NR_THREADS)
     {
-        getHMAC(&personDobArray[i]);
+        generateHashForDob(&personDobArray[i]);
     }
     return NULL;
 }
+
 char *getByteArrayFromHex()
 {
-    char *hexstring = "1fe23491dc6dbdc28bb1ee5707ce531c";
     char *bytearray = malloc(sizeof(char) * 17);
     bytearray[17] = 0;
 
@@ -94,10 +93,9 @@ char *getByteArrayFromHex()
     {
         char str[3];
         int idx = i * 2;
-        str[0] = hexstring[idx];
-        str[1] = hexstring[idx + 1];
+        str[0] = SEARCH_MD5[idx];
+        str[1] = SEARCH_MD5[idx + 1];
         str[2] = 0;
-        printf("%s", str);
         bytearray[i] = (int)strtol(str, NULL, 16);
     }
 
@@ -136,7 +134,6 @@ int main(void)
         idx[i] = i;
         printf(" [INFO] Creating thread %d (%x)\n", idx[i], idx[i]);
         pthread_create(&threadId, NULL, threadWorker, (void *)(uintptr_t)idx[i]);
-        //threadWorker((void *)(uintptr_t)idx[i]);
     }
 
     pthread_join(threadId, NULL);
